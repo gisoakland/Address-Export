@@ -69,9 +69,12 @@
 			
 			<ul class="nav navbar-nav navbar-right">
 				<form class="navbar-form pull-right">
-					<a type="button" class="btn btn-primary" id="Export"> Export CSV</a>
+					<a type="button" class="btn btn-primary" id="Export">Export CSV</a>
 					<button type="button" class="btn btn-primary" id="layerModal">
 						<span class="glyphicon glyphicon-th-list" aria-hidden="true"></span>
+					</button>
+					<button type="button" class="btn btn-primary" data-toggle="popover" data-placement="bottom" title="Help" data-html="true">
+						<span class="glyphicon glyphicon-question-sign" aria-hidden="true"></span>
 					</button>
 					<div id="myModal" class="modal fade" role="dialog">
 						<div class="modal-dialog modal-sm">
@@ -116,6 +119,11 @@
 	
     <!-- Drop your code between the script tags below! -->
     <script>
+	$(document).ready(function(){
+		$('[data-toggle="popover"]').popover({
+			content: "Click the Polygon <img src='lib/images/polygon.jpg' style='height:18px'>to the left to start drawing<br>Double click to finish drawing<br><br>Use the edit <span class='glyphicon glyphicon-edit' aria-hidden='true'></span> or delete <span class='glyphicon glyphicon-trash' aria-hidden='true'></span> button to modify your polygon<br><br>Click the Export CSV button once satisified with polygon"
+		}); 
+	});
 	window.onload = function() {
 		var user = 'oakland-admin';
 		//tableName isn't very useful unless we decide to make it searchable by more layers or attempt to automate the addlayer process
@@ -171,15 +179,18 @@
 					rectangle: false,
 					marker: false
 				},
-				edit: false
+				edit: false,
+				position: 'topleft'
 			});
 			var drawControlEdit = new L.Control.Draw({
 				draw: false,
-				edit: { featureGroup: drawnItems }
+				edit: { featureGroup: drawnItems },
+				position: 'topleft'
 			});
 			
 			map_object.addControl(drawControlFull);
-
+			var editingMode = false;
+			
 			var polySQL = '';
 			map_object.on('draw:created', function(event) {
 				var type = event.layerType;
@@ -244,16 +255,31 @@
 				}
 			});
 			
+			map_object.on("draw:editstart", function(e){
+				editingMode = true;
+			});
+			map_object.on("draw:editstop", function(e){
+				editingMode = false;
+			});
+			
+			
 			$('#Export').click(function(){
-				if(Object.keys(drawnItems._layers).length === 0){
-					alert('Draw a Polygon');
-					return;
+				document.getElementById("Export").removeAttribute("href");
+				if(editingMode === true){
+					alert('Press save or cancel to finish editing');
+					return -1;
 				}
-				var tableSQL = layerSource[0].tableName[0];
-				var fieldSQL = tableSQL + ".apn_sort," + tableSQL + ".situs_ho_1," + tableSQL + ".situs_stre," + tableSQL + ".situs_city," + tableSQL + ".situs_zip_";
-				var new_sql = "http://oakland-admin.cartodb.com/api/v2/sql?q=select%20" + fieldSQL + "%20from%20" + tableSQL + "%20WHERE%20ST_Intersects(" + tableSQL + ".the_geom,ST_GeomFromText(" + polySQL + "))&format=csv";
-				console.log(new_sql);
-				$(this).attr("href", new_sql);	
+				else if(Object.keys(drawnItems._layers).length === 0){
+					alert('Draw a Polygon');
+					return -1;
+				}
+				else{
+					var tableSQL = layerSource[0].tableName[0];
+					var fieldSQL = tableSQL + ".apn_sort," + tableSQL + ".situs_ho_1," + tableSQL + ".situs_stre," + tableSQL + ".situs_city," + tableSQL + ".situs_zip_";
+					var new_sql = "http://oakland-admin.cartodb.com/api/v2/sql?q=select%20" + fieldSQL + "%20from%20" + tableSQL + "%20WHERE%20ST_Intersects(" + tableSQL + ".the_geom,ST_GeomFromText(" + polySQL + "))&format=csv";
+					console.log(new_sql);
+					$(this).attr("href", new_sql);
+				}
 			});
 		}
 		<!-- End Drawing Tool -->
