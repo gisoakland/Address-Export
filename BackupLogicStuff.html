@@ -1,3 +1,11 @@
+<!--
+ var nwlat = map.getBounds().getNorthWest().lat,
+        nwlon = map.getBounds().getNorthWest().lng,
+        selat = map.getBounds().getSouthEast().lat,
+        selon = map.getBounds().getSouthEast().lng;
+var new_sql = "http://oakland-admin.cartodb.com/api/v2/sql?q=SELECT%20*%20FROM%20 btv_prints_041513f %20WHERE%20the_geom%20%26%26%20ST_SetSRID(ST_MakeBox2D(ST_Point(" + nwlon + "%2C%20" + nwlat + ")%2C%20ST_Point(" + selon + "%2C%20" + selat + "))%2C4326)%20ORDER%20BY%20height%20DESC%20LIMIT%202000&format=csv";
+$(this).attr("href", new_sql);
+-->
 <!--Leaflet Version-->
 <!DOCTYPE html>
 <html>
@@ -58,7 +66,8 @@
 	<!-- Navigation Bar -->
 	<nav class="navbar navbar-default" style="margin:0; border:0; padding-right:15px; background-color:#FFFFFF">
 		<div class="navbar-header">
-			<a class="navbar-brand" href="#">Address Export</a>
+			<a class="navbar-brand" href="#">Sidewalk Damage</a>
+			
 		</div>
 		<div>
 			<ul class="nav navbar-nav">
@@ -69,7 +78,10 @@
 			
 			<ul class="nav navbar-nav navbar-right">
 				<form class="navbar-form pull-right">
-					<a type="button" class="btn btn-primary" id="Export"> Export CSV</a>
+					<input type="text" class="form-control" placeholder="Search By Apn" id="textBox">
+					<input type="button" class="btn btn-primary" value="Find" id="Find">
+					<input type="button" class="btn btn-primary" value="Clear" id="Clear">
+					<a type="button" class="btn btn-primary" id="Export" ><!--href="#" target="_blank"--> Export CSV</a>
 					<button type="button" class="btn btn-primary" id="layerModal">
 						<span class="glyphicon glyphicon-th-list" aria-hidden="true"></span>
 					</button>
@@ -85,8 +97,10 @@
 									<div class="checkbox">
 										<!-- Value should be where your layer will be stored in the sublayer array-->
 										<!-- add "checked" if you want to have the layer visible when loaded, if you don't want the layer visible you will also need to sublayer.hide() it when you load it in-->
-										<input name="layerselect" value="0" type="checkbox" data-toggle="toggle" data-style="ios" data-class="fast" data-onstyle="info" data-size="mini" data-on=" " data-off=" ">
-										&emsp;ac_parcels_2015<br>
+										<input name="layerselect" value="0" type="checkbox" checked data-toggle="toggle" data-style="ios" data-class="fast" data-onstyle="info" data-size="mini" data-on=" " data-off=" ">
+										&emsp;gisadmin_sidewalkdamageapn_citywide<br>
+										<input name="layerselect" value="1" type="checkbox" data-toggle="toggle" data-style="ios" data-class="fast" data-onstyle="info" data-size="mini" data-on=" " data-off=" ">
+										&emsp;ac_parcel_2015<br>
 									</div>
 								</div>
 								<div class="modal-footer" style="padding:5px; padding-right:20px">
@@ -116,11 +130,16 @@
 	
     <!-- Drop your code between the script tags below! -->
     <script>
+	
+	
 	window.onload = function() {
 		var user = 'oakland-admin';
 		//tableName isn't very useful unless we decide to make it searchable by more layers or attempt to automate the addlayer process
 		var layerSource = [{
-			tableName:["ac_parcels_2015"],
+			tableName: ["gisadmin_sidewalkdamageapn_citywide"],
+			vizjson: "https://oakland.cartodb.com/u/oakland-admin/api/v2/viz/761dd91e-24c3-11e5-80ab-42010a149c0c/viz.json"
+		},{
+			tableName:["ac_parcel_2015"],
 			vizjson: "https://oakland.cartodb.com/u/oakland-admin/api/v2/viz/206c1a90-34b2-11e5-a5c5-42010a14cb63/viz.json"
 		}]
 		// Initialize map center and zoom level
@@ -129,6 +148,7 @@
 					zoom: 12,
 					maxZoom: 21
 		}
+		
 		// Instantiate map on specified DOM element
 		var map_object = new L.Map(map, options);
 		
@@ -145,121 +165,115 @@
 			.done(function(layer){
 				var sublayer = layer.getSubLayer(0);
 				sublayers.push(sublayer);
+			})
+			.error(function(err){
+				console.log("error: " + err);
+			});
+		cartodb.createLayer(map_object, layerSource[1].vizjson)
+			.addTo(map_object)
+			.done(function(layer){
+				var sublayer = layer.getSubLayer(0);
+				sublayers.push(sublayer);
 				sublayer.hide();
 			})
 			.error(function(err){
 				console.log("error: " + err);
 			});
 		initSearchBox();
-		initDrawTool();
 		
-		<!-- Start Drawing Tool -->
-		function initDrawTool(){
-			var drawnItems = L.featureGroup().addTo(map_object);
-			var drawControlFull = new L.Control.Draw({
-				draw: {
-					polyline: false,
-					polygon: {
-						metric: false,
-						allowIntersection: false,
-						showArea: true,
-						shapeOptions: {
-							color: '#bada55'
-						}
-					},
-					circle: false,
-					rectangle: false,
-					marker: false
+		//drawing tools
+		var drawnItems = L.featureGroup().addTo(map_object);
+		var drawControlFull = new L.Control.Draw({
+			draw: {
+				polyline: false,
+				polygon: {
+					metric: false,
+					allowIntersection: false,
+					showArea: true,
+					shapeOptions: {
+						color: '#bada55'
+					}
 				},
-				edit: false
-			});
-			var drawControlEdit = new L.Control.Draw({
-				draw: false,
-				edit: { featureGroup: drawnItems }
-			});
+				circle: false,
+				rectangle: false,
+				marker: false
+			},
+			edit: false
+		});
+		var drawControlEdit = new L.Control.Draw({
+			draw: false,
+			edit: { featureGroup: drawnItems }
+		});
+		
+		map_object.addControl(drawControlFull);
+		
+		map_object.on('draw:created', function(event) {
+			var type = event.layerType;
+			var layer = event.layer;
 			
-			map_object.addControl(drawControlFull);
-
-			var polySQL = '';
-			map_object.on('draw:created', function(event) {
-				var type = event.layerType;
-				var layer = event.layer;
+			if(type === 'polygon'){
+				var geojson = {};
+				geojson['type'] = 'Feature';
+				geojson['geometry'] = {};
+				geojson['geometry']['type'] = "Polygon";
+				
 				var coordinates = [];
 				latlngs = layer.getLatLngs();
 				for (var i =0; i < latlngs.length; i++) {
-					coordinates.push([latlngs[i].lng, latlngs[i].lat]);
+					coordinates.push([latlngs[i].lng, latlngs[i].lat])
 				}
-				coordinates.push([latlngs[0].lng, latlngs[0].lat]);
-				//set default poly string and coordinate system to WGS84
-				polySQL = "'SRID=4326;POLYGON(("
-				for(var i = 0; i < coordinates.length; i++){
-					if(i != 0){
-						polySQL = polySQL + ",";
-					}
-					polySQL = polySQL + coordinates[i][0] + "%20" + coordinates[i][1];
-				}
-				polySQL = polySQL + "))'";
-				console.log(polySQL);
 				
-				drawnItems.addLayer(layer);
-				drawControlFull.removeFrom(map_object);
-				drawControlEdit.addTo(map_object);
-			});
-			
-			map_object.on('draw:edited', function(event) {
-				var layers = event.layers;
-				var countOfEditedLayers = 0;
-				var coordinates = [];
-				
-				layers.eachLayer(function(layer){
-					latlngs = layer.getLatLngs();
-					for (var i =0; i < latlngs.length; i++) {
-						coordinates.push([latlngs[i].lng, latlngs[i].lat])
-					}
-					coordinates.push([latlngs[0].lng, latlngs[0].lat]);
-					countOfEditedLayers++;
-				});
-				console.log("Edited " + countOfEditedLayers + " layers");
-				if(countOfEditedLayers === 0){
-					return;
+				geojson['geometry']['coordinates'] = [coordinates];
+				console.log(JSON.stringify(geojson));
+			}
+			drawnItems.addLayer(layer);
+			drawControlFull.removeFrom(map_object);
+			drawControlEdit.addTo(map_object);
+		});
+		
+		map_object.on('draw:edited', function(event) {
+			var layers = event.layers;
+			var countOfEditedLayers = 0;
+			var coordinates = [];
+			layers.eachLayer(function(layer){
+				latlngs = layer.getLatLngs();
+				for (var i =0; i < latlngs.length; i++) {
+					coordinates.push([latlngs[i].lng, latlngs[i].lat])
+					console.log([latlngs[i].lng, latlngs[i].lat]);
 				}
-				polySQL = "'SRID=4326;POLYGON(("
-				for(var i = 0; i < coordinates.length; i++){
-					if(i != 0){
-						polySQL = polySQL + ",";
-					}
-					polySQL = polySQL + coordinates[i][0] + "%20" + coordinates[i][1];
-				}
-				polySQL = polySQL + "))'";
-				console.log(polySQL);
+				countOfEditedLayers++;
 			});
-			
-			map_object.on("draw:deleted", function(e){
-				var check =  Object.keys(drawnItems._layers).length;
-				console.log(check);
-				if (check === 0){
-					drawControlFull.addTo(map_object);
-					drawControlEdit.removeFrom(map_object);
-					polySQL = '';
-				}
-			});
-			
-			$('#Export').click(function(){
-				if(Object.keys(drawnItems._layers).length === 0){
-					alert('Draw a Polygon');
-					return;
-				}
-				var tableSQL = layerSource[0].tableName[0];
-				var fieldSQL = tableSQL + ".apn_sort," + tableSQL + ".situs_ho_1," + tableSQL + ".situs_stre," + tableSQL + ".situs_city," + tableSQL + ".situs_zip_";
-				var new_sql = "http://oakland-admin.cartodb.com/api/v2/sql?q=select%20" + fieldSQL + "%20from%20" + tableSQL + "%20WHERE%20ST_Intersects(" + tableSQL + ".the_geom,ST_GeomFromText(" + polySQL + "))&format=csv";
-				console.log(new_sql);
-				$(this).attr("href", new_sql);	
-			});
-		}
-		<!-- End Drawing Tool -->
+				console.log("Edited " + countOfEditedLayers + " layers");				
+		});
+		
+		map_object.on("draw:deleted", function(e){
+			var check =  Object.keys(drawnItems._layers).length;
+			console.log(check);
+			if (check === 0){
+				drawControlFull.addTo(map_object);
+				drawControlEdit.removeFrom(map_object);
+			}
+		});
+		
 		//initialize buttons and code to handle cases
+		$('#Find').click(function(){
+			var newQuery = "SELECT * FROM " + layerSource[0].tableName[0] + " WHERE apn = " + "'" + document.getElementById('textBox').value + "'";
+			createQuery(newQuery, sublayers[0]);
+		});
+		
+		$('#Clear').click(function(){
+			var newQuery = "SELECT * FROM " + layerSource[0].tableName[0];
+			createQuery(newQuery, sublayers[0]);
+		});
+		
 		$('#layerModal').click(function(){
 			$('#myModal').modal();
+		});
+		
+		$('#Export').click(function(){
+			console.log(drawnItems);
+			//var new_sql = "http://oakland-admin.cartodb.com/api/v2/sql?q=SELECT%20*%20FROM%20" + layerSource[0].tableName[0] + "%20WHERE%20ST_Contains(" + layerSource[0].tableName[0] + ".the_geom,%20" + drawnItems + ".the_geom)&format=csv";
+			//$(this).attr("href", new_sql);	
 		});
 		
 		//class for toggles, 
@@ -298,6 +312,20 @@
 			});
 		}
 		<!--Geocoder End-->
+		
+		<!--Query Start-->	
+		//re-written, this is all you need
+		//still needs to be in main/onload unless you pass in the mapobject and the username or the username could just be a static
+		//requires full query statement "Select * From tableName WHERE column = 'data'" and the layer object
+		function createQuery(query, myLayer){
+			var sql = new cartodb.SQL({user});
+			myLayer.setSQL(query);
+			sql.getBounds(query).done(function(bounds){
+				map_object.fitBounds(bounds, {maxZoom:17});
+			})
+			return;
+		}
+		<!--Query End-->
 	}
 		//https://github.com/Leaflet/Leaflet.draw
     </script>
