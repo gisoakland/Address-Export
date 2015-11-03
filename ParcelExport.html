@@ -1,5 +1,4 @@
 <!--Leaflet Version-->
-<!--Using GISADMIN_OaklandServiceTaps-->
 <!DOCTYPE html>
 <html>
 	<head>
@@ -70,7 +69,7 @@
 	<!-- Navigation Bar -->
 	<nav class="navbar navbar-default" style="margin:0; border:0; padding-right:15px; background-color:#FFFFFF">
 		<div class="navbar-header">
-			<a class="navbar-brand">Address Export</a>
+			<a class="navbar-brand">Oakland Parcels</a>
 		</div>
 		<div>
 			<ul class="nav navbar-nav">
@@ -82,9 +81,34 @@
 			<ul class="nav navbar-nav navbar-right">
 				<form class="navbar-form pull-right">
 					<a type="button" class="btn btn-primary" id="Export">Export CSV</a>
+					<button type="button" class="btn btn-primary" id="layerModal">
+						<span class="glyphicon glyphicon-th-list" aria-hidden="true" data-toggle="tooltip" data-placement="bottom" title="Layers"></span>
+					</button>
 					<button type="button" class="btn btn-primary" data-toggle="popover" data-placement="bottom" data-html="true" data-content="Click the Polygon <img src='lib/images/polygon.jpg' style='height:18px'>to the left to start drawing<br>Double click to finish drawing<br><br>Use the edit <span class='glyphicon glyphicon-edit' aria-hidden='true'></span> or delete <span class='glyphicon glyphicon-trash' aria-hidden='true'></span> button to modify your polygon<br><br>Click the Export CSV button once satisified with polygon<br>You can open the CSV using Microsoft Excel">
 						<span class="glyphicon glyphicon-question-sign" aria-hidden="true" data-toggle="tooltip" data-placement="bottom" title="Help"></span>
 					</button>
+					<div id="myModal" class="modal fade" role="dialog">
+						<div class="modal-dialog modal-sm">
+							<!--Couldn't get the modal backdrop to be completely gone, only options are to make it invisible or make it so it cant be closed by clicking outside the modal-->
+							<div class="modal-content">
+								<div class="modal-header" style="padding:10px">
+									<button type="button" class="close" data-dismiss="modal">&times;</button>
+									<h4 class="modal-title">Toggle Layers</h4>
+								</div>
+								<div class="modal-body" style="padding:10px">
+									<div class="checkbox">
+										<!-- Value should be where your layer will be stored in the sublayer array-->
+										<!-- add "checked" if you want to have the layer visible when loaded, if you don't want the layer visible you will also need to sublayer.hide() it when you load it in-->
+										<input name="layerselect" value="ac_parcels_2015" type="checkbox" data-toggle="toggle" data-style="ios" data-class="fast" data-onstyle="info" data-size="mini" data-on=" " data-off=" ">
+										&emsp;AC Parcels 2015<br>
+									</div>
+								</div>
+								<div class="modal-footer" style="padding:5px; padding-right:20px">
+									<button type="button" class="btn btn-default btn-sm" data-dismiss="modal">Close</button>
+								</div>
+							</div>
+						</div>
+					</div>
 				</form>
 			</ul>
 		</div>
@@ -100,6 +124,24 @@
     <script src="http://libs.cartocdn.com/cartodb.js/v3/3.14/cartodb.js"></script>
 	<script src="lib/leaflet.draw.js"></script>
 	
+	<script type="infowindow/html" id="infowindow_template">
+      <div class="cartodb-popup v2">
+        <a href="#close" class="cartodb-popup-close-button close">x</a>
+         <div class="cartodb-popup-content-wrapper">
+           <div class="cartodb-popup-content">    
+             <!-- content.data contains the field info -->
+				<h4>APN</h4>
+				<p>{{content.data.apn_sort}}</p>
+				<h4>Home Owner</h4>
+				<p>{{content.data.owner_name}}</p>
+				<h4>Home Owner Mailing Address</h4>
+				<p>{{content.data.mailing__2}} {{content.data.mailing__3}} {{content.data.mailing__4}} {{content.data.mailing__5}}</p>
+				<a id="infoLink" href="" target="_blank">Google Maps</a>
+           </div>
+         </div>
+         <div class="cartodb-popup-tip-container"></div>
+      </div>
+    </script>
     <!-- Drop your code between the script tags below! -->
     <script>
 	$(document).ready(function(){
@@ -109,10 +151,10 @@
 	
 	window.onload = function() {
 		var user = 'oakland-admin';
+		//tableName isn't very useful unless we decide to make it searchable by more layers or attempt to automate the addlayer process
 		var layerSource = [{
-			//AddressExport
-			tableName:["gisadmin_oaklandservicetaps"],
-			vizjson: "https://oakland.cartodb.com/u/oakland-admin/api/v2/viz/8a165284-8274-11e5-a461-42010a14800a/viz.json"
+			tableName:["ac_parcels_2015"],
+			vizjson: "https://oakland.cartodb.com/u/oakland-admin/api/v2/viz/206c1a90-34b2-11e5-a5c5-42010a14cb63/viz.json"
 		}]
 		// Initialize map center and zoom level
 		var options = {
@@ -160,7 +202,50 @@
 				var sublayer = layer.getSubLayer(0);
 				sublayers.push(sublayer);
 				sublayersNames.push(layerSource[0].tableName[0]);
+				sublayer.hide();
+				sublayer.infowindow.set({template:$('#infowindow_template').html()});
 				<!--Attempting to access data within the sublayer-->
+				sublayer.on('featureClick', function(e, pos, latlng, data, layerIndex){
+					console.log(data.cartodb_id);
+					var sql = new cartodb.SQL({ user: user });
+					
+					var newSQL = "SELECT * FROM " + layerSource[0].tableName[0] + " WHERE cartodb_id = " + data.cartodb_id;
+					console.log(newSQL);
+					sql.execute(newSQL)
+						.done(function(data){
+							console.log(data);
+							console.log(data.rows);
+						})
+					sql.getBounds(newSQL).done(function(bounds){
+						document.getElementById("infoLink").removeAttribute("href");
+						console.log(bounds);
+						var hyperlink = "http://www.google.com/maps/place/";
+						var Lat = (bounds[0][0] + bounds[1][0])/2;
+						var Lng = (bounds[0][1] + bounds[1][1])/2;
+						var appendStr = Lat + ","  + Lng; //saving it off for the link later
+						var latSign= 'N';
+						var lngSign= 'W';
+						if(Lat < 0){
+							latSign = 'S'
+						}
+						if(Lng > 0){
+							latSign = 'E'
+						}
+						Lat = Math.abs(Lat);
+						Lng = Math.abs(Lng);
+						var latDegrees = parseInt(Lat);
+						var latMinutes = parseInt((Lat - latDegrees) * 60);
+						var latSeconds = parseInt((Lat - latDegrees - latMinutes / 60) * 3600 * 100) / 100;
+						var lngDegrees = parseInt(Lng);
+						var lngMinutes = parseInt((Lng - lngDegrees) * 60);
+						var lngSeconds = parseInt((Lng - lngDegrees - lngMinutes / 60) * 3600 * 100) / 100;
+						
+						hyperlink = hyperlink + latDegrees + "°" + latMinutes + "'" + latSeconds + '"'+ latSign + "+" + lngDegrees + "°" + lngMinutes + "'" + lngSeconds + '"' + lngSign + "/@" + appendStr + ",17z";
+						
+						console.log(hyperlink);
+						document.getElementById("infoLink").setAttribute("href", hyperlink);
+					})
+				})
 			})
 			.error(function(err){
 				console.log("error: " + err);
@@ -276,6 +361,7 @@
 				deleteMode = false;
 			});
 			
+			
 			$('#Export').click(function(){
 				document.getElementById("Export").removeAttribute("href");
 				if(editingMode === true){
@@ -293,7 +379,10 @@
 				else{
 					var tableSQL = layerSource[0].tableName[0];
 					var fieldSQL = 
-						tableSQL + ".addr_tx," + tableSQL + ".newcityzip";
+						tableSQL + ".apn_sort," + tableSQL + ".situs_ho_1," + tableSQL + ".situs_unit," + tableSQL + ".situs_stre," + 
+						tableSQL + ".situs_city," + tableSQL + ".situs_zip_," + tableSQL + ".owner_name," + tableSQL + ".mailing__1," + 
+						tableSQL + ".mailing__2," + tableSQL + ".mailing__3," + tableSQL + ".mailing__4," + 
+						tableSQL + ".mailing__5," + tableSQL + ".mailing__6," + tableSQL + ".mailing_ad";
 					var new_sql = "http://oakland-admin.cartodb.com/api/v2/sql?q=select%20" + fieldSQL + "%20from%20" + tableSQL + "%20WHERE%20ST_Intersects(" + tableSQL + ".the_geom,ST_GeomFromText(" + polySQL + "))&format=csv";
 					console.log(new_sql);
 					$(this).attr("href", new_sql);
@@ -301,6 +390,33 @@
 			});
 		}
 		<!--End Drawing Tool-->
+		//initialize buttons and code to handle cases
+		$('#layerModal').click(function(){
+			$('#myModal').modal();
+		});
+		
+		//class for toggles, 
+		$('input[name="layerselect"]').change(function(){
+			var layerVal = getSubLayer(this.value);
+			if(layerVal === -1){
+				alert('Error did not find table named ' + this.value);
+				return -1;
+			}
+			if($(this).is(":checked")){
+				sublayers[layerVal].show();
+			}else{
+				sublayers[layerVal].hide();
+			}
+		});
+		
+		function getSubLayer(layerName){
+			for(var i = 0; i < sublayersNames.length; i++){
+				if(sublayersNames[i] === layerName){
+					return i;
+				}
+			}
+			return -1;
+		}
 		
 		<!--Geocoder Start-->
 		function initSearchBox(){
